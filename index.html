@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Subway Dash 3D</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #4dc3ff; font-family: 'Arial Black', Impact, sans-serif; }
+    #game-canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+    /* HUD */
+    #hud {
+      position: fixed; top: 0; left: 0; width: 100%; padding: 14px 16px;
+      display: flex; justify-content: space-between; align-items: flex-start;
+      pointer-events: none; z-index: 10;
+    }
+    #pause-btn {
+      pointer-events: auto; background: #ff9800; color: #fff;
+      border: 3px solid #1a1a1a; border-radius: 12px;
+      width: 48px; height: 48px; font-size: 20px; font-weight: 900;
+      box-shadow: 0 4px 0 #1a1a1a; cursor: pointer;
+    }
+    #pause-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #1a1a1a; }
+
+    .stats { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+    .pill {
+      background: rgba(18, 24, 38, 0.85); color: #fff;
+      border: 3px solid #1a1a1a; border-radius: 12px;
+      padding: 6px 14px; font-size: 20px; letter-spacing: 1px;
+      text-shadow: 2px 2px 0 #000; box-shadow: 0 4px 0 #1a1a1a;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .coin-dot {
+      width: 18px; height: 18px; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #fff176, #ffb300);
+      border: 2px solid #8d5500; display: inline-block;
+    }
+    #map-badge {
+      position: fixed; top: 72px; left: 50%; transform: translateX(-50%);
+      background: #ffeb3b; color: #1a1a1a; border: 3px solid #1a1a1a;
+      border-radius: 20px; padding: 6px 18px; font-size: 16px;
+      box-shadow: 0 4px 0 #1a1a1a; z-index: 10; opacity: 0;
+      transition: opacity 0.35s ease; pointer-events: none;
+    }
+
+    /* Overlays */
+    .overlay {
+      position: fixed; inset: 0; background: rgba(15, 23, 42, 0.72);
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      z-index: 20; padding: 20px; text-align: center;
+    }
+    .hidden { display: none !important; }
+    .title {
+      font-size: clamp(36px, 8vw, 64px); color: #ffeb3b;
+      text-shadow: 0 5px 0 #d84315, 0 8px 0 #1a1a1a;
+      line-height: 1.05; margin-bottom: 10px; transform: rotate(-2deg);
+    }
+    .subtitle {
+      color: #fff; font-family: Arial, sans-serif; font-weight: bold;
+      font-size: 16px; margin-bottom: 22px; text-shadow: 1px 1px 2px #000;
+    }
+    .map-selector {
+      display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-bottom: 24px;
+    }
+    .map-btn {
+      background: #fff; color: #1a1a1a; border: 3px solid #1a1a1a;
+      border-radius: 12px; padding: 10px 16px; font-size: 15px; font-weight: 900;
+      cursor: pointer; box-shadow: 0 4px 0 #1a1a1a; transition: transform 0.1s;
+    }
+    .map-btn.active { background: #00e676; transform: scale(1.06); }
+    .play-btn {
+      background: #00e676; color: #1a1a1a; border: 4px solid #1a1a1a;
+      border-radius: 18px; padding: 16px 42px; font-size: 26px; font-weight: 900;
+      box-shadow: 0 6px 0 #1a1a1a; cursor: pointer;
+    }
+    .play-btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #1a1a1a; }
+    .controls-hint {
+      margin-top: 20px; color: #e2e8f0; font-family: Arial, sans-serif; font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <div id="hud">
+    <button id="pause-btn" aria-label="Pausar">||</button>
+    <div class="stats">
+      <div class="pill"><span id="score-val">000000</span></div>
+      <div class="pill"><span class="coin-dot"></span><span id="coin-val">0</span></div>
+    </div>
+  </div>
+
+  <div id="map-badge">ZONA: PÁTIO CENTRAL</div>
+
+  <div id="start-screen" class="overlay">
+    <div class="title">SUBWAY<br>DASH 3D</div>
+    <div class="subtitle">Escolha o mapa inicial e corra pelos trilhos!</div>
+    <div class="map-selector">
+      <button class="map-btn active" data-map="0">Pátio Central</button>
+      <button class="map-btn" data-map="1">Estação Tóquio</button>
+      <button class="map-btn" data-map="2">Pôr do Sol Urbano</button>
+    </div>
+    <button id="start-btn" class="play-btn">CORRER!</button>
+    <div class="controls-hint">Celular: Deslize para os lados, cima ou baixo<br>PC: Setas ou teclas W A S D</div>
+  </div>
+
+  <div id="pause-screen" class="overlay hidden">
+    <div class="title">PAUSADO</div>
+    <button id="resume-btn" class="play-btn">CONTINUAR</button>
+  </div>
+
+  <div id="gameover-screen" class="overlay hidden">
+    <div class="title" style="color:#ff5252;">FIM DE JOGO!</div>
+    <div class="subtitle" id="final-stats">Pontos: 0 | Moedas: 0</div>
+    <button id="restart-btn" class="play-btn">JOGAR DE NOVO</button>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+
+    // --- CONFIGURAÇÃO DE MAPAS (BIOMAS) ---
+    const MAPS = [
+      {
+        name: 'PÁTIO CENTRAL',
+        sky: 0x4fc3f7,
+        fog: 0x4fc3f7,
+        ground: 0x8d6e63,
+        wall: 0xb71c1c,
+        wallTrim: 0xffca28,
+        buildingColors: [0xff7043, 0x42a5f5, 0xffca28, 0x66bb6a, 0xab47bc]
+      },
+      {
+        name: 'ESTAÇÃO TÓQUIO',
+        sky: 0x1a237e,
+        fog: 0x283593,
+        ground: 0x455a64,
+        wall: 0x263238,
+        wallTrim: 0x00e5ff,
+        buildingColors: [0x00e5ff, 0xff4081, 0x7c4dff, 0x1de9b6, 0xffea00]
+      },
+      {
+        name: 'PÔR DO SOL URBANO',
+        sky: 0xff7043,
+        fog: 0xff8a65,
+        ground: 0x6d4c41,
+        wall: 0xd84315,
+        wallTrim: 0xfff176,
+        buildingColors: [0xffb74d, 0xf06292, 0xba68c8, 0x4dd0e1, 0xffd54f]
+      }
+    ];
+
+    // --- GERADOR DE TEXTURAS PROCEDURAIS (TRENS MULTICOLORIDOS E DETALHADOS) ---
+    function createTrainSideTexture(baseColor, stripeColor, graffitiColor) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+
+      // Corpo principal
+      ctx.fillStyle = baseColor;
+      ctx.fillRect(0, 0, 512, 256);
+
+      // Faixa superior e inferior
+      ctx.fillStyle = stripeColor;
+      ctx.fillRect(0, 18, 512, 24);
+      ctx.fillRect(0, 195, 512, 34);
+
+      // Linha divisória escura
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(0, 42, 512, 6);
+      ctx.fillRect(0, 189, 512, 6);
+
+      // Portas e Janelas
+      for (let i = 0; i < 4; i++) {
+        const x = 24 + i * 122;
+        if (i === 1 || i === 2) {
+          // Porta dupla estilo metrô
+          ctx.fillStyle = '#cfd8dc';
+          ctx.fillRect(x, 58, 92, 130);
+          ctx.strokeStyle = '#263238';
+          ctx.lineWidth = 5;
+          ctx.strokeRect(x, 58, 92, 130);
+          ctx.beginPath();
+          ctx.moveTo(x + 46, 58);
+          ctx.lineTo(x + 46, 188);
+          ctx.stroke();
+
+          // Vidros da porta
+          ctx.fillStyle = '#29b6f6';
+          ctx.fillRect(x + 10, 70, 28, 55);
+          ctx.fillRect(x + 54, 70, 28, 55);
+        } else {
+          // Janela panorâmica
+          ctx.fillStyle = '#263238';
+          ctx.fillRect(x, 65, 96, 68);
+          ctx.fillStyle = '#4fc3f7';
+          ctx.fillRect(x + 6, 71, 84, 56);
+          // Reflexo no vidro
+          ctx.fillStyle = 'rgba(255,255,255,0.45)';
+          ctx.beginPath();
+          ctx.moveTo(x + 14, 125);
+          ctx.lineTo(x + 38, 73);
+          ctx.lineTo(x + 54, 73);
+          ctx.lineTo(x + 30, 125);
+          ctx.fill();
+        }
+      }
+
+      // Arte estilo grafite urbano na lateral
+      ctx.save();
+      ctx.translate(256, 156);
+      ctx.rotate(-0.06);
+      ctx.font = '900 38px Arial Black';
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 8;
+      ctx.strokeStyle = '#111';
+      ctx.strokeText('SURF!', 0, 0);
+      ctx.fillStyle = graffitiColor;
+      ctx.fillText('SURF!', 0, 0);
+      ctx.restore();
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    function createTrainFrontTexture(baseColor, stripeColor, isRamp = false) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+
+      ctx.fillStyle = baseColor;
+      ctx.fillRect(0, 0, 256, 256);
+
+      ctx.fillStyle = stripeColor;
+      ctx.fillRect(0, 175, 256, 48);
+
+      // Para-brisa duplo
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(22, 36, 212, 86);
+      ctx.fillStyle = '#4fc3f7';
+      ctx.fillRect(30, 44, 92, 70);
+      ctx.fillRect(134, 44, 92, 70);
+
+      // Letreiro digital
+      ctx.fillStyle = '#111';
+      ctx.fillRect(58, 12, 140, 18);
+      ctx.fillStyle = '#ffeb3b';
+      ctx.font = 'bold 13px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(isRamp ? 'SUBA AQUI ▲' : 'EXPRESSO 01', 128, 25);
+
+      // Faróis
+      ctx.fillStyle = '#fff9c4';
+      ctx.beginPath();
+      ctx.arc(46, 198, 16, 0, Math.PI * 2);
+      ctx.arc(210, 198, 16, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#111';
+      ctx.stroke();
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    function createTrainRoofTexture(roofColor) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = roofColor;
+      ctx.fillRect(0, 0, 256, 512);
+
+      // Unidades de ar-condicionado no teto
+      ctx.fillStyle = '#cfd8dc';
+      ctx.strokeStyle = '#37474f';
+      ctx.lineWidth = 4;
+      [60, 220, 380].forEach(y => {
+        ctx.fillRect(48, y, 160, 70);
+        ctx.strokeRect(48, y, 160, 70);
+      });
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    const TRAIN_PALETTES = [
+      { base: '#e53935', stripe: '#ffeb3b', roof: '#eceff1', graffiti: '#00e5ff' }, // Vermelho & Amarelo
+      { base: '#1e88e5', stripe: '#ff9800', roof: '#e3f2fd', graffiti: '#ffeb3b' }, // Azul & Laranja
+      { base: '#43a047', stripe: '#ffffff', roof: '#e8f5e9', graffiti: '#ff4081' }, // Verde & Branco
+      { base: '#8e24aa', stripe: '#00e676', roof: '#f3e5f5', graffiti: '#ffea00' }  // Roxo & Verde Neon
+    ];
+
+    const trainMaterialSets = TRAIN_PALETTES.map(p => {
+      const sideMat = new THREE.MeshLambertMaterial({ map: createTrainSideTexture(p.base, p.stripe, p.graffiti) });
+      const frontMat = new THREE.MeshLambertMaterial({ map: createTrainFrontTexture(p.base, p.stripe, false) });
+      const roofMat = new THREE.MeshLambertMaterial({ map: createTrainRoofTexture(p.roof) });
+      const bottomMat = new THREE.MeshLambertMaterial({ color: 0x263238 });
+      // Ordem BoxGeometry: +x, -x, +y, -y, +z, -z
+      return [sideMat, sideMat, roofMat, bottomMat, frontMat, frontMat];
+    });
+
+    // --- CENA THREE.JS ---
+    const canvas = document.getElementById('game-canvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 180);
+    camera.position.set(0, 6.2, 10.5);
+    camera.lookAt(0, 2.2, -12);
+
+    // Iluminação vibrante estilo Subway Surfers
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.35);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xfffde7, 1.4);
+    dirLight.position.set(12, 25, 15);
+    scene.add(dirLight);
+
+    // --- CONSTANTES DE JOGO ---
+    const LANES = [-3.2, 0, 3.2];
+    const TRAIN_WIDTH = 2.65;
+    const TRAIN_HEIGHT = 3.1;
+    const TRAIN_LENGTH = 14;
+
+    let currentMapIndex = 0;
+    let gameState = 'MENU'; // MENU, PLAYING, PAUSED, GAMEOVER
+    let score = 0;
+    let coins = 0;
+    let speed = 26;
+    let nextMapScore = 1000;
+
+    // --- CHÃO E TRILHOS INFINITOS ---
+    const groundGeo = new THREE.PlaneGeometry(36, 220);
+    const groundMat = new THREE.MeshLambertMaterial({ color: MAPS[0].ground });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.z = -90;
+    scene.add(ground);
+
+    // Trilhos metálicos e dormentes
+    const railMat = new THREE.MeshStandardMaterial({ color: 0xcfd8dc, metalness: 0.6, roughness: 0.3 });
+    const tieMat = new THREE.MeshLambertMaterial({ color: 0x4e342e });
+    const ties = [];
+
+    LANES.forEach(lx => {
+      [-0.85, 0.85].forEach(offset => {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.15, 220), railMat);
+        rail.position.set(lx + offset, 0.08, -90);
+        scene.add(rail);
+      });
+    });
+
+    for (let z = 10; z > -180; z -= 2.2) {
+      const rowGroup = new THREE.Group();
+      LANES.forEach(lx => {
+        const tie = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.1, 0.45), tieMat);
+        tie.position.set(lx, 0.04, 0);
+        rowGroup.add(tie);
+      });
+      rowGroup.position.z = z;
+      scene.add(rowGroup);
+      ties.push(rowGroup);
+    }
+
+    // --- MUROS LATERAIS E PRÉDIOS DO MAPA ---
+    const wallLeftMat = new THREE.MeshLambertMaterial({ color: MAPS[0].wall });
+    const wallTrimMat = new THREE.MeshLambertMaterial({ color: MAPS[0].wallTrim });
+
+    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(1.2, 3.6, 220), wallLeftMat);
+    leftWall.position.set(-6.2, 1.8, -90);
+    scene.add(leftWall);
+
+    const rightWall = new THREE.Mesh(new THREE.BoxGeometry(1.2, 3.6, 220), wallLeftMat);
+    rightWall.position.set(6.2, 1.8, -90);
+    scene.add(rightWall);
+
+    const leftTrim = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.35, 220), wallTrimMat);
+    leftTrim.position.set(-6.2, 3.65, -90);
+    scene.add(leftTrim);
+
+    const rightTrim = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.35, 220), wallTrimMat);
+    rightTrim.position.set(6.2, 3.65, -90);
+    scene.add(rightTrim);
+
+    // Prédios e postes decorativos laterais
+    const sceneryObjects = [];
+    function spawnScenery() {
+      const mapCfg = MAPS[currentMapIndex];
+      for (let z = 0; z > -190; z -= 14) {
+        [-1, 1].forEach(side => {
+          const h = 10 + Math.random() * 16;
+          const w = 6 + Math.random() * 4;
+          const d = 8 + Math.random() * 4;
+          const color = mapCfg.buildingColors[Math.floor(Math.random() * mapCfg.buildingColors.length)];
+          const bMat = new THREE.MeshLambertMaterial({ color });
+          const building = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), bMat);
+          building.position.set(side * (11.5 + Math.random() * 2), h / 2, z);
+          scene.add(building);
+          sceneryObjects.push(building);
+        });
+      }
+    }
+    spawnScenery();
+
+    function applyMapTheme(index, showBanner = true) {
+      currentMapIndex = index % MAPS.length;
+      const cfg = MAPS[currentMapIndex];
+      scene.background = new THREE.Color(cfg.sky);
+      scene.fog = new THREE.Fog(cfg.fog, 55, 165);
+      groundMat.color.setHex(cfg.ground);
+      wallLeftMat.color.setHex(cfg.wall);
+      wallTrimMat.color.setHex(cfg.wallTrim);
+
+      sceneryObjects.forEach(obj => {
+        const c = cfg.buildingColors[Math.floor(Math.random() * cfg.buildingColors.length)];
+        obj.material.color.setHex(c);
+      });
+
+      if (showBanner) {
+        const badge = document.getElementById('map-badge');
+        badge.textContent = `MAPA: ${cfg.name}`;
+        badge.style.opacity = '1';
+        setTimeout(() => { badge.style.opacity = '0'; }, 2400);
+      }
+    }
+    applyMapTheme(0, false);
+
+    // --- PERSONAGEM (ESTILO URBANO) ---
+    const player = new THREE.Group();
+    const bodyMat = new THREE.MeshLambertMaterial({ color: 0x1e88e5 }); // Jaqueta azul
+    const pantsMat = new THREE.MeshLambertMaterial({ color: 0x263238 }); // Calça jeans escura
+    const skinMat = new THREE.MeshLambertMaterial({ color: 0xffcc80 });
+    const capMat = new THREE.MeshLambertMaterial({ color: 0xe53935 }); // Boné vermelho
+    const shoeMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const packMat = new THREE.MeshLambertMaterial({ color: 0xffca28 }); // Mochila amarela
+
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.0, 0.5), bodyMat);
+    torso.position.y = 1.35;
+    player.add(torso);
+
+    const backpack = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.75, 0.35), packMat);
+    backpack.position.set(0, 1.38, 0.38);
+    player.add(backpack);
+
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.68, 0.68), skinMat);
+    head.position.y = 2.22;
+    player.add(head);
+
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.25, 0.74), capMat);
+    cap.position.set(0, 2.58, 0);
+    player.add(cap);
+
+    const capVisor = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.1, 0.35), capMat);
+    capVisor.position.set(0, 2.52, 0.45); // Boné virado para trás
+    player.add(capVisor);
+
+    const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.85, 0.35), pantsMat);
+    leftLeg.position.set(-0.23, 0.45, 0);
+    player.add(leftLeg);
+
+    const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.85, 0.35), pantsMat);
+    rightLeg.position.set(0.23, 0.45, 0);
+    player.add(rightLeg);
+
+    const leftShoe = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.22, 0.52), shoeMat);
+    leftShoe.position.set(0, -0.38, -0.06);
+    leftLeg.add(leftShoe);
+
+    const rightShoe = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.22, 0.52), shoeMat);
+    rightShoe.position.set(0, -0.38, -0.06);
+    rightLeg.add(rightShoe);
+
+    scene.add(player);
+
+    // Estado do jogador
+    let currentLane = 1; // 0, 1, 2
+    let playerY = 0;
+    let verticalVel = 0;
+    let isJumping = false;
+    let isRolling = false;
+    let rollTimer = 0;
+    let runAnimTime = 0;
+
+    // --- OBSTÁCULOS, TRENS E MOEDAS ---
+    const obstacles = [];
+    const coinsList = [];
+    const coinGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.14, 16);
+    coinGeo.rotateX(Math.PI / 2);
+    const coinMat = new THREE.MeshStandardMaterial({ color: 0xffd600, metalness: 0.4, roughness: 0.2 });
+
+    function spawnCoinLine(laneIndex, startZ, count, yHeight = 1.0) {
+      for (let i = 0; i < count; i++) {
+        const coin = new THREE.Mesh(coinGeo, coinMat);
+        coin.position.set(LANES[laneIndex], yHeight, startZ - i * 2.4);
+        scene.add(coin);
+        coinsList.push(coin);
+      }
+    }
+
+    function createTrain(laneIndex, zPos, moving = false, hasRamp = false) {
+      const matSet = trainMaterialSets[Math.floor(Math.random() * trainMaterialSets.length)];
+      const trainGroup = new THREE.Group();
+
+      const body = new THREE.Mesh(new THREE.BoxGeometry(TRAIN_WIDTH, TRAIN_HEIGHT, TRAIN_LENGTH), matSet);
+      body.position.y = TRAIN_HEIGHT / 2;
+      trainGroup.add(body);
+
+      if (hasRamp) {
+        // Rampa frontal amarela e preta para subir no teto do trem
+        const rampGeo = new THREE.BoxGeometry(TRAIN_WIDTH - 0.1, 0.35, 5.2);
+        const rampMat = new THREE.MeshLambertMaterial({ color: 0xffca28 });
+        const ramp = new THREE.Mesh(rampGeo, rampMat);
+        ramp.rotation.x = Math.atan2(TRAIN_HEIGHT, 4.6);
+        ramp.position.set(0, TRAIN_HEIGHT / 2, TRAIN_LENGTH / 2 + 2.1);
+        trainGroup.add(ramp);
+      }
+
+      trainGroup.position.set(LANES[laneIndex], 0, zPos);
+      scene.add(trainGroup);
+
+      obstacles.push({
+        type: 'TRAIN',
+        mesh: trainGroup,
+        lane: laneIndex,
+        z: zPos,
+        length: TRAIN_LENGTH,
+        height: TRAIN_HEIGHT,
+        speed: moving ? 12 : 0,
+        hasRamp
+      });
+
+      // Moedas no teto do trem
+      if (hasRamp || Math.random() > 0.45) {
+        spawnCoinLine(laneIndex, zPos + 4, 5, TRAIN_HEIGHT + 0.9);
+      }
+    }
+
+    function createBarrier(laneIndex, zPos, highBarrier = false) {
+      const group = new THREE.Group();
+      const postMat = new THREE.MeshLambertMaterial({ color: 0x37474f });
+      const boardMat = new THREE.MeshLambertMaterial({ color: highBarrier ? 0x00e5ff : 0xff3d00 });
+
+      const leftPost = new THREE.Mesh(new THREE.BoxGeometry(0.18, highBarrier ? 2.8 : 1.15, 0.18), postMat);
+      leftPost.position.set(-1.05, highBarrier ? 1.4 : 0.58, 0);
+      group.add(leftPost);
+
+      const rightPost = new THREE.Mesh(new THREE.BoxGeometry(0.18, highBarrier ? 2.8 : 1.15, 0.18), postMat);
+      rightPost.position.set(1.05, highBarrier ? 1.4 : 0.58, 0);
+      group.add(rightPost);
+
+      const board = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.65, 0.22), boardMat);
+      board.position.set(0, highBarrier ? 2.25 : 0.82, 0);
+      group.add(board);
+
+      group.position.set(LANES[laneIndex], 0, zPos);
+      scene.add(group);
+
+      obstacles.push({
+        type: highBarrier ? 'HIGH_BARRIER' : 'LOW_BARRIER',
+        mesh: group,
+        lane: laneIndex,
+        z: zPos,
+        length: 0.8,
+        height: highBarrier ? 2.7 : 1.15,
+        speed: 0,
+        hasRamp: false
+      });
+
+      if (!highBarrier) {
+        spawnCoinLine(laneIndex, zPos + 2, 3, 2.2);
+      } else {
+        spawnCoinLine(laneIndex, zPos + 2, 3, 0.7);
+      }
+    }
+
+    let nextSpawnZ = -35;
+    function generateRow() {
+      const pattern = Math.floor(Math.random() * 4);
+      const lanes = [0, 1, 2].sort(() => Math.random() - 0.5);
+
+      if (pattern === 0) {
+        // Um trem com rampa + um trem parado + pista livre com moedas
+        createTrain(lanes[0], nextSpawnZ, false, true);
+        createTrain(lanes[1], nextSpawnZ - 4, false, false);
+        spawnCoinLine(lanes[2], nextSpawnZ + 4, 5, 1.0);
+        nextSpawnZ -= 26;
+      } else if (pattern === 1) {
+        // Trem em movimento vindo na direção do jogador
+        createTrain(lanes[0], nextSpawnZ - 10, true, false);
+        createBarrier(lanes[1], nextSpawnZ, false);
+        createBarrier(lanes[2], nextSpawnZ, true);
+        nextSpawnZ -= 25;
+      } else if (pattern === 2) {
+        // Dois trens coloridos lado a lado e barreira baixa no meio
+        createTrain(lanes[0], nextSpawnZ, false, false);
+        createTrain(lanes[1], nextSpawnZ, false, false);
+        createBarrier(lanes[2], nextSpawnZ, false);
+        nextSpawnZ -= 24;
+      } else {
+        // Sequência de barreiras
+        createBarrier(lanes[0], nextSpawnZ, true);
+        createBarrier(lanes[1], nextSpawnZ - 7, false);
+        spawnCoinLine(lanes[2], nextSpawnZ + 2, 6, 1.0);
+        nextSpawnZ -= 22;
+      }
+    }
+
+    function resetGame() {
+      obstacles.forEach(o => scene.remove(o.mesh));
+      obstacles.length = 0;
+      coinsList.forEach(c => scene.remove(c));
+      coinsList.length = 0;
+
+      currentLane = 1;
+      player.position.set(0, 0, 0);
+      playerY = 0;
+      verticalVel = 0;
+      isJumping = false;
+      isRolling = false;
+      rollTimer = 0;
+      player.scale.y = 1;
+
+      score = 0;
+      coins = 0;
+      speed = 26;
+      nextMapScore = 1000;
+      nextSpawnZ = -32;
+
+      for (let i = 0; i < 6; i++) generateRow();
+      updateHUD();
+    }
+
+    function updateHUD() {
+      document.getElementById('score-val').textContent = String(Math.floor(score)).padStart(6, '0');
+      document.getElementById('coin-val').textContent = coins;
+    }
+
+    // --- CONTROLES (TECLADO E TOUCH SWIPE) ---
+    function moveLeft() {
+      if (gameState !== 'PLAYING') return;
+      if (currentLane > 0) currentLane--;
+    }
+
+    function moveRight() {
+      if (gameState !== 'PLAYING') return;
+      if (currentLane < 2) currentLane++;
+    }
+
+    function jump() {
+      if (gameState !== 'PLAYING') return;
+      if (!isJumping) {
+        verticalVel = 16.5;
+        isJumping = true;
+        if (isRolling) {
+          isRolling = false;
+          player.scale.y = 1;
+        }
+      }
+    }
+
+    function roll() {
+      if (gameState !== 'PLAYING') return;
+      if (isJumping) {
+        verticalVel = -24; // Cai rápido para rolar
+      }
+      isRolling = true;
+      rollTimer = 0.55;
+      player.scale.y = 0.52;
+    }
+
+    window.addEventListener('keydown', e => {
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') moveLeft();
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') moveRight();
+      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W' || e.key === ' ') jump();
+      if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') roll();
+    });
+
+    let touchStartX = 0;
+    let touchStartY = 0;
+    canvas.addEventListener('touchstart', e => {
+      touchStartX = e.changedTouches[0].screenX;
+      touchStartY = e.changedTouches[0].screenY;
+    }, { passive: true });
+
+    canvas.addEventListener('touchend', e => {
+      const dx = e.changedTouches[0].screenX - touchStartX;
+      const dy = e.changedTouches[0].screenY - touchStartY;
+      if (Math.abs(dx) < 24 && Math.abs(dy) < 24) return;
+      if (Math.abs(dx) > Math.abs(dy)) {
+        if (dx > 0) moveRight(); else moveLeft();
+      } else {
+        if (dy < 0) jump(); else roll();
+      }
+    }, { passive: true });
+
+    // --- BOTÕES DE INTERFACE ---
+    document.querySelectorAll('.map-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.map-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        applyMapTheme(Number(btn.dataset.map), false);
+      });
+    });
+
+    document.getElementById('start-btn').addEventListener('click', () => {
+      document.getElementById('start-screen').classList.add('hidden');
+      resetGame();
+      gameState = 'PLAYING';
+    });
+
+    document.getElementById('pause-btn').addEventListener('click', () => {
+      if (gameState === 'PLAYING') {
+        gameState = 'PAUSED';
+        document.getElementById('pause-screen').classList.remove('hidden');
+      }
+    });
+
+    document.getElementById('resume-btn').addEventListener('click', () => {
+      document.getElementById('pause-screen').classList.add('hidden');
+      gameState = 'PLAYING';
+      lastTime = performance.now();
+    });
+
+    document.getElementById('restart-btn').addEventListener('click', () => {
+      document.getElementById('gameover-screen').classList.add('hidden');
+      resetGame();
+      gameState = 'PLAYING';
+      lastTime = performance.now();
+    });
+
+    // --- LOOP PRINCIPAL ---
+    let lastTime = performance.now();
+
+    function animate(now) {
+      requestAnimationFrame(animate);
+      const dt = Math.min((now - lastTime) / 1000, 0.05);
+      lastTime = now;
+
+      if (gameState !== 'PLAYING') {
+        renderer.render(scene, camera);
+        return;
+      }
+
+      // Aceleração gradual e pontuação
+      speed = Math.min(48, speed + dt * 0.45);
+      score += speed * dt * 1.6;
+
+      // Troca automática de mapa a cada 1000 pontos
+      if (score >= nextMapScore) {
+        nextMapScore += 1000;
+        applyMapTheme(currentMapIndex + 1, true);
+      }
+
+      // Movimento lateral suave do jogador
+      const targetX = LANES[currentLane];
+      player.position.x += (targetX - player.position.x) * Math.min(1, dt * 16);
+      player.rotation.z = (player.position.x - targetX) * 0.12;
+
+      // Rolamento
+      if (isRolling) {
+        rollTimer -= dt;
+        if (rollTimer <= 0) {
+          isRolling = false;
+          player.scale.y = 1;
+        }
+      }
+
+      // Altura base (chão ou teto de trem)
+      let groundLevel = 0;
+      for (const obs of obstacles) {
+        if (obs.type === 'TRAIN' && obs.lane === currentLane) {
+          const halfLen = obs.length / 2;
+          const frontZ = obs.z + halfLen;
+          const backZ = obs.z - halfLen;
+
+          // Subindo pela rampa
+          if (obs.hasRamp && frontZ >= -0.5 && frontZ <= 5.2 && playerY <= obs.height + 0.3) {
+            const progress = 1 - Math.max(0, frontZ) / 5.2;
+            groundLevel = Math.max(groundLevel, progress * obs.height);
+          }
+          // Em cima do teto do trem
+          if (frontZ >= -0.4 && backZ <= 0.4 && playerY >= obs.height - 0.45) {
+            groundLevel = Math.max(groundLevel, obs.height);
+          }
+        }
+      }
+
+      // Física vertical (pulo e gravidade)
+      if (playerY > groundLevel || verticalVel > 0) {
+        playerY += verticalVel * dt;
+        verticalVel -= 44 * dt;
+        if (playerY <= groundLevel) {
+          playerY = groundLevel;
+          verticalVel = 0;
+          isJumping = false;
+        }
+      } else {
+        playerY = groundLevel;
+        isJumping = false;
+      }
+      player.position.y = playerY;
+
+      // Animação de corrida
+      if (!isJumping && !isRolling) {
+        runAnimTime += dt * (speed * 0.55);
+        leftLeg.rotation.x = Math.sin(runAnimTime) * 0.85;
+        rightLeg.rotation.x = -Math.sin(runAnimTime) * 0.85;
+        torso.position.y = 1.35 + Math.abs(Math.cos(runAnimTime)) * 0.08;
+      } else {
+        leftLeg.rotation.x = 0.35;
+        rightLeg.rotation.x = -0.35;
+      }
+
+      // Câmera acompanha suavemente
+      camera.position.x += (player.position.x * 0.55 - camera.position.x) * dt * 8;
+      camera.position.y += (6.2 + playerY * 0.65 - camera.position.y) * dt * 8;
+
+      // Movimento dos dormentes e prédios
+      ties.forEach(t => {
+        t.position.z += speed * dt;
+        if (t.position.z > 12) t.position.z -= 190;
+      });
+      sceneryObjects.forEach(b => {
+        b.position.z += speed * dt;
+        if (b.position.z > 16) b.position.z -= 196;
+      });
+
+      // Atualiza obstáculos e verifica colisões
+      nextSpawnZ += speed * dt;
+      while (nextSpawnZ > -145) {
+        generateRow();
+      }
+
+      for (let i = obstacles.length - 1; i >= 0; i--) {
+        const obs = obstacles[i];
+        obs.z += (speed + obs.speed) * dt;
+        obs.mesh.position.z = obs.z;
+
+        // Colisão na mesma pista
+        if (obs.lane === currentLane) {
+          const halfLen = obs.length / 2;
+          const inZ = obs.z + halfLen > -0.45 && obs.z - halfLen < 0.45;
+
+          if (inZ) {
+            if (obs.type === 'TRAIN') {
+              const rampSafe = obs.hasRamp && (obs.z + halfLen) > 0.2;
+              if (!rampSafe && playerY < obs.height - 0.45) {
+                triggerGameOver();
+                return;
+              }
+            } else if (obs.type === 'LOW_BARRIER') {
+              if (playerY < 1.05) {
+                triggerGameOver();
+                return;
+              }
+            } else if (obs.type === 'HIGH_BARRIER') {
+              if (!isRolling && playerY < 2.4) {
+                triggerGameOver();
+                return;
+              }
+            }
+          }
+        }
+
+        if (obs.z - obs.length / 2 > 18) {
+          scene.remove(obs.mesh);
+          obstacles.splice(i, 1);
+        }
+      }
+
+      // Atualiza e coleta moedas
+      for (let i = coinsList.length - 1; i >= 0; i--) {
+        const c = coinsList[i];
+        c.position.z += speed * dt;
+        c.rotation.y += dt * 3.5;
+
+        const dx = Math.abs(c.position.x - player.position.x);
+        const dy = Math.abs(c.position.y - (player.position.y + 1.0));
+        const dz = Math.abs(c.position.z - player.position.z);
+
+        if (dx < 0.9 && dy < 1.2 && dz < 1.0) {
+          coins++;
+          score += 25;
+          scene.remove(c);
+          coinsList.splice(i, 1);
+          continue;
+        }
+
+        if (c.position.z > 14) {
+          scene.remove(c);
+          coinsList.splice(i, 1);
+        }
+      }
+
+      updateHUD();
+      renderer.render(scene, camera);
+    }
+
+    function triggerGameOver() {
+      gameState = 'GAMEOVER';
+      document.getElementById('final-stats').textContent =
+        `Pontos: ${Math.floor(score)} | Moedas: ${coins}`;
+      document.getElementById('gameover-screen').classList.remove('hidden');
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>
